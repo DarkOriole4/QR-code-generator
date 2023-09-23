@@ -8,17 +8,23 @@ def convert_to_PIL(coor):
 # draw a square locator at a given location (where startpos defines the bottom-right corner of the locator)
 def draw_locator(startpos):
     startpos = convert_to_PIL(startpos)
-    for y in range(7):
-        for x in range(7):
-            if y == 0 or y == 6:
-                pattern = [0,0,0,0,0,0,0]
-            elif y == 1 or  y == 5:
-                pattern = [0,1,1,1,1,1,0]
-            else:
-                pattern = [0,1,0,0,0,1,0]
+    for y in range(9):
+        for x in range(9):
+            if y == 0 or y == 8:
+                pattern = [0,0,0,0,0,0,0,0,0]
+            if y == 1 or y == 7:
+                pattern = [0,1,1,1,1,1,1,1,0]
+            elif y == 2 or  y == 6:
+                pattern = [0,1,0,0,0,0,0,1,0]
+            elif y >= 3 and y <= 5:
+                pattern = [0,1,0,1,1,1,0,1,0]
 
             pos = [startpos[0] - x, startpos[1] - y]
-            qr_code.putpixel(pos, pattern[x])
+            if pos[0] <= 20 and pos[0] >= 0 and pos[1] <= 20 and pos[1] >= 0:
+                if pattern[x] == 1:
+                    qr_code.putpixel(pos, 0)
+                elif pattern[x] == 0:
+                    qr_code.putpixel(pos, 1)
 
 # this function fills a byte block in the QR code in a given
 # direction (down/up), starting from a given point
@@ -64,20 +70,22 @@ def main():
     message = 'Hello!'
 
     mode = 'byte'     # numeric, alphanumeric, byte, kanji
-    mask = 'none'          # masking patterns from 0-7 or 'none'
-    err_format = 'M'  # 'L': ~7% restoration, 'M': ~15% restoration, 'Q': ~25% restoration, 'H': ~30% restoration
+    mask = 'none'          # masking patterns from 0-7 or 'none' (4 might be a bit buggy)
+    err_format = 'G'  # 'L': ~7% restoration, 'M': ~15% restoration, 'Q': ~25% restoration, 'H': ~30% restoration
+
 
     ## PREPARE THE PARITY BITS TO PUT INTO THE QR
     if err_format == 'L':
         parity = get_parity(message, 7)
     elif err_format == 'M':
         parity = get_parity(message, 10)
-    elif err_format == 'M':
+    elif err_format == 'Q':
         parity = get_parity(message, 13)
-    elif err_format == 'M':
+    elif err_format == 'H':
         parity = get_parity(message, 17)
     else:
         raise Exception('Wrong error formatting mode')
+
 
     ## INITIALISE THE QR CODE TEMPLATE
     global SIZE
@@ -85,20 +93,21 @@ def main():
     SIZE = 21
     qr_code = Image.new(mode="1", size=(SIZE, SIZE), color=1)  # create QR code template (V.1 - 21x21p)
 
-    ## ADD THE MODE DECLARATION
+
+    ## ENCODE THE MODE DECLARATION
     if mode == 'numeric':
-        data = '0001'
+        mode_data = '0001'
     elif mode == 'alphanumeric':
-        data = '0010'
+        mode_data = '0010'
     elif mode == 'byte':
-        data = '0100'
+        mode_data = '0100'
     elif mode == 'kanji':
-        data == '1000'
+        mode_data == '1000'
     else:
         raise Exception('No mode named %s' % (mode))
 
     for i in range(4):
-        if data[i] == '1':
+        if mode_data[i] == '1':
             x = i % 2
             y = i // 2
             qr_code.putpixel(convert_to_PIL((x, y)), 0)
@@ -117,7 +126,7 @@ def main():
                 elif mask == 3:
                     state = (x + y) % 3 == 0
                 elif mask == 4:
-                    state = (x/2 + y/3) % 2 == 0
+                    state = (x//3 + y//2) % 2 == 0
                 elif mask == 5:
                     state = (x * y) % 2 + (x * y) % 3 == 0
                 elif mask == 6:
@@ -130,10 +139,91 @@ def main():
                 if state == True:
                     qr_code.putpixel(convert_to_PIL((x, y)), 0)
 
+
+    ## ENCODE THE MASKING
+    if mask == 0 or mask == 'none':
+        mask_data = '000'
+    elif mask == 1:
+        mask_data = '001'
+    elif mask == 2:
+        mask_data = '010'
+    elif mask == 3:
+        mask_data = '011'
+    elif mask == 4:
+        mask_data = '100'
+    elif mask == 5:
+        mask_data = '101'
+    elif mask == 6:
+        mask_data = '110'
+    elif mask == 7:
+        mask_data = '111'
+
+    # vertical one
+    startpos = [12, 2]
+    for i in range(3):
+        pos = [startpos[0], startpos[1] + i]
+        if mask_data[i] == '1':
+            qr_code.putpixel(convert_to_PIL(pos), 0)
+        elif mask_data[i] == '0':
+            qr_code.putpixel(convert_to_PIL(pos), 1)
+
+    # horizontal one
+    startpos = [18, 12]
+    for i in range(3):
+        pos = [startpos[0] - i, startpos[1]]
+        if mask_data[i] == '1':
+            qr_code.putpixel(convert_to_PIL(pos), 0)
+        elif mask_data[i] == '0':
+            qr_code.putpixel(convert_to_PIL(pos), 1)
+
+
+    ## ADD THE STATIC TEMPLATE LINES
+    # vertical one
+    startpos = (12, 14)
+    for i in range(5):
+        pos = [startpos[0] - i, startpos[1]]
+        qr_code.putpixel(convert_to_PIL(pos), i % 2)
+
+    # horizontal one
+    startpos = [14, 12]
+    for i in range(5):
+        pos = [startpos[0], startpos[1] - i]
+        qr_code.putpixel(convert_to_PIL(pos), i % 2)
+
+
+    ## ENCODE THE ERROR FORMATTING
+    if err_format == 'L':
+        err_data = '01'
+    elif err_format == 'M':
+        err_data = '00'
+    elif err_format == 'Q':
+        err_data = '11'
+    elif err_format == 'H':
+        err_data = '10'
+
+    # vertical one
+    startpos = [12, 0]
+    for i in range(2):
+        pos = [startpos[0], startpos[1] + i]
+        if err_data[i] == '1':
+            qr_code.putpixel(convert_to_PIL(pos), 0)
+        elif err_data[i] == '0':
+            qr_code.putpixel(convert_to_PIL(pos), 1)
+
+    # horizontal one
+    startpos = [20, 12]
+    for i in range(2):
+        pos = [startpos[0] - i, startpos[1]]
+        if err_data[i] == '1':
+            qr_code.putpixel(convert_to_PIL(pos), 0)
+        elif err_data[i] == '0':
+            qr_code.putpixel(convert_to_PIL(pos), 1)
+
     ## INSERT THE SQUARE LOCATORS
-    draw_locator((14, 14))
-    draw_locator((0, 14))
-    draw_locator((14, 0))
+    draw_locator((13, 13))
+    draw_locator((-1, 13))
+    draw_locator((13, -1))
+
 
     ## DISPLAY THE RESULT
     factor = 52
