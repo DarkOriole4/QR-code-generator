@@ -2,6 +2,15 @@ from reedsolo import RSCodec
 from PIL import Image
 
 
+
+# bitwise xor two binary strings. The result is another string
+def bitwise_xor(arg1, arg2):
+    result = ''
+    for i in range(len(arg1)):
+        result += str(int(arg1[i]) ^ int(arg2[i]))
+    return result
+
+
 # draw a square locator at a given location (where startpos defines the bottom-right corner of the locator)
 def draw_locator(startpos):
     for y in range(9):
@@ -53,7 +62,7 @@ def get_parity(msg, ecc):
         msg_table.append(msg[j])
 
     enc_msg = rsc.encode(msg_table)  # generate error corrected message
-    parity_str = enc_msg[-ecc:]  # extract the parity bytes
+    parity_str = enc_msg[-ecc:]  # cut off the parity bytes
 
     # CONVERT THE PARITY BYTES TO BINARY
     parity = ''
@@ -61,12 +70,41 @@ def get_parity(msg, ecc):
         parity += bin(parity_str[i])[2:].zfill(8)
     return parity
 
+
+def get_format_parity(message):
+    # generator polynomial taken from the QR code specification
+    generator = '10100110111'
+
+    # prepare the format string
+    message += '0000000000'
+    while message[0] == '0':
+        message = message[1:]
+
+
+    # calculate the error correction bits
+    while len(message) > 10:
+        #pad the generator
+        while len(generator) < len(message):
+            generator += '0'
+
+        #xor and remove zeros from the left side
+        message = bitwise_xor(message, generator)
+        while message[0] == '0':
+            message = message[1:]
+
+    #pad the remainder on the left
+    while len(message) < 10:
+        message = '0' + message
+    return message
+
+
+
 def main():
     ## PARAMETERS
     message = 'Hello World!'
     mode = 'byte'     # select mode from: numeric, alphanumeric, byte, kanji
-    mask = 'none'     # select masking pattern from 0-7 or 'none'
-    err_format = 'L'  # 'L': ~7% restoration, 'M': ~15% restoration, 'Q': ~25% restoration, 'H': ~30% restoration
+    mask = 6          # select masking pattern from 0-7 or 'none'
+    err_format = 'M'  # 'L': ~7% restoration, 'M': ~15% restoration, 'Q': ~25% restoration, 'H': ~30% restoration
 
 
     ## PREPARE THE PARITY BITS TO PUT INTO THE QR
@@ -169,10 +207,13 @@ def main():
         mask_data = bin(mask)[2:].zfill(3)
 
 
-    ##ERROR CORRECTION BITS FOR THE FORMATTING DATA
+    ## DERIVE THE FORMATTING DATA STRING WITH ERROR-CORRECTION BITS
     format_data = err_data + mask_data
-    format_parity = get_parity(format_data, 1)
-    print(format_parity)
+    format_string = format_data + get_format_parity(format_data)
+
+    #xor with a mask taken from the QR code specification
+    format_string = bitwise_xor(format_string, '101010000010010')
+    print(format_string)
 
 
     ## INSERT THE SQUARE LOCATORS
@@ -180,10 +221,9 @@ def main():
     draw_locator((21, 7))
     draw_locator((7, 21))
 
-    fill_byte('00110110', 'down', (20, 15))
 
     ## DISPLAY THE RESULT
-    factor = 52
+    factor = 1080 // 21
     qr_code = qr_code.resize(size=(SIZE*factor, SIZE*factor), resample=0)
     qr_code.show()
 
