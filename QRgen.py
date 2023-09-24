@@ -12,7 +12,6 @@ def convert_to_anum(message):
     message_data = ''
     message = message.upper()
     for i in range(len(message)):
-        char = message[i]
         if len(message) % 2 != 0 and i == len(message) - 1:  # if the final char is odd
             num1 = anum_ord(message[i])
             block = bin(num1)[2:].zfill(6)
@@ -20,7 +19,7 @@ def convert_to_anum(message):
         elif i % 2 == 0:
             num1 = anum_ord(message[i])
             num2 = anum_ord(message[i + 1])
-            block = bin(num1 * 45 + 14)[2:].zfill(11)
+            block = bin(num1 * 45 + num2)[2:].zfill(11)
             message_data += block
     return message_data
 
@@ -171,7 +170,8 @@ def main():
 
     ### ENCODE THE MESSAGE INTO THE QR CODE
 
-    ## GENERATE THE CHARACTER COUNT INDICATOR AND THE MODE DECLARATION
+    ## GENERATE THE CHARACTER COUNT INDICATOR, MODE DECLARATION AND CONVERT THE DATA INTO BITS
+    ## ACCORDING TO THE SELECTED MODE
     if mode == 'numeric':
         mode_data = '0001'
         cci = bin(len(message))[2:].zfill(10)
@@ -217,6 +217,26 @@ def main():
             count += 1
         isFull = True
         print(message_data)
+
+
+    ## PUT THE DATA INTO THE QR CODE
+    edges = [20, 9]
+    directions = ['up', 'down']
+
+    # draw the first half of data
+    for k in range(4):
+        # draw a column of bytes
+        startpos = [20 - (k * 2), edges[k % 2]]
+        for j in range(3):
+            # draw a byte
+            for i in range(8):
+                if k % 2 == 0:
+                    pos = [startpos[0], startpos[1] - (j * 4)]
+                else:
+                    pos = [startpos[0], startpos[1] + (j * 4)]
+                fill_byte(message_data[:8], directions[k % 2], pos)
+            #remove the byte that was just written
+            message_data = message_data[8:]
 
 
     ## PERFORM THE MASKING
