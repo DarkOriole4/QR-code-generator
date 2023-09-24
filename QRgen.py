@@ -1,13 +1,9 @@
 from reedsolo import RSCodec
 from PIL import Image
 
-# given a coordinate in the QR coordinate system, convert to PILs coordinate system
-def convert_to_PIL(coor):
-    return tuple([SIZE-1 - coor[0], SIZE-1 - coor[1]])
 
 # draw a square locator at a given location (where startpos defines the bottom-right corner of the locator)
 def draw_locator(startpos):
-    startpos = convert_to_PIL(startpos)
     for y in range(9):
         for x in range(9):
             if y == 0 or y == 8:
@@ -39,10 +35,10 @@ def fill_byte(data, direction, startpos):
             x = i % 2
             y = i // 2
             if direction == 'up':
-                pos = [startpos[0] + x, startpos[1] + y]
+                pos = [startpos[0] - x, startpos[1] - y]
             elif direction == 'down':
-                pos = [startpos[0] + x, startpos[1] - y]
-            qr_code.putpixel(convert_to_PIL(pos), 0)
+                pos = [startpos[0] - x, startpos[1] + y]
+            qr_code.putpixel(pos, 0)
 
 # this function returns a requested amount of correction bytes from a given message
 def get_parity(msg, ecc):
@@ -68,9 +64,8 @@ def get_parity(msg, ecc):
 def main():
     ## PARAMETERS
     message = 'Hello World!'
-
-    mode = 'byte'     # numeric, alphanumeric, byte, kanji
-    mask = 4          # masking patterns from 0-7 or 'none' (4 might be a bit buggy)
+    mode = 'byte'     # select mode from: numeric, alphanumeric, byte, kanji
+    mask = 'none'     # select masking pattern from 0-7 or 'none'
     err_format = 'L'  # 'L': ~7% restoration, 'M': ~15% restoration, 'Q': ~25% restoration, 'H': ~30% restoration
 
 
@@ -107,10 +102,12 @@ def main():
         raise Exception('No mode named %s' % (mode))
 
     for i in range(4):
+        x = 20 - i % 2
+        y = 20 - i // 2
         if mode_data[i] == '1':
-            x = i % 2
-            y = i // 2
-            qr_code.putpixel(convert_to_PIL((x, y)), 0)
+            qr_code.putpixel((x, y), 0)
+        else:
+            qr_code.putpixel((x, y), 1)
 
 
     ## PERFORM THE MASKING
@@ -137,61 +134,24 @@ def main():
                     raise Exception('No mask named %s' % (mask))
 
                 if state == True:
-                    qr_code.putpixel(convert_to_PIL((x, y)), 0)
+                    qr_code.putpixel((x, y), 0)
 
 
-    ## ENCODE THE MASKING
-    if mask == 0 or mask == 'none':
-        mask_data = '000'
-    elif mask == 1:
-        mask_data = '001'
-    elif mask == 2:
-        mask_data = '010'
-    elif mask == 3:
-        mask_data = '011'
-    elif mask == 4:
-        mask_data = '100'
-    elif mask == 5:
-        mask_data = '101'
-    elif mask == 6:
-        mask_data = '110'
-    elif mask == 7:
-        mask_data = '111'
-
+    ## ADD THE STATIC TIMING LINES
     # vertical one
-    startpos = [12, 2]
-    for i in range(3):
+    startpos = [8, 5]
+    for i in range(5):
+        pos = [startpos[0] + i, startpos[1]]
+        qr_code.putpixel(pos, i % 2)
+
+    # horizontal one
+    startpos = [5, 8]
+    for i in range(5):
         pos = [startpos[0], startpos[1] + i]
-        if mask_data[i] == '1':
-            qr_code.putpixel(convert_to_PIL(pos), 0)
-        elif mask_data[i] == '0':
-            qr_code.putpixel(convert_to_PIL(pos), 1)
-
-    # horizontal one
-    startpos = [18, 12]
-    for i in range(3):
-        pos = [startpos[0] - i, startpos[1]]
-        if mask_data[i] == '1':
-            qr_code.putpixel(convert_to_PIL(pos), 0)
-        elif mask_data[i] == '0':
-            qr_code.putpixel(convert_to_PIL(pos), 1)
+        qr_code.putpixel(pos, i % 2)
 
 
-    ## ADD THE STATIC TEMPLATE LINES
-    # vertical one
-    startpos = (12, 14)
-    for i in range(5):
-        pos = [startpos[0] - i, startpos[1]]
-        qr_code.putpixel(convert_to_PIL(pos), i % 2)
-
-    # horizontal one
-    startpos = [14, 12]
-    for i in range(5):
-        pos = [startpos[0], startpos[1] - i]
-        qr_code.putpixel(convert_to_PIL(pos), i % 2)
-
-
-    ## ENCODE THE ERROR FORMATTING
+    ## PREPARE THE ERROR FORMATTING INFO
     if err_format == 'L':
         err_data = '01'
     elif err_format == 'M':
@@ -201,23 +161,12 @@ def main():
     elif err_format == 'H':
         err_data = '10'
 
-    # vertical one
-    startpos = [12, 0]
-    for i in range(2):
-        pos = [startpos[0], startpos[1] + i]
-        if err_data[i] == '1':
-            qr_code.putpixel(convert_to_PIL(pos), 0)
-        elif err_data[i] == '0':
-            qr_code.putpixel(convert_to_PIL(pos), 1)
 
-    # horizontal one
-    startpos = [20, 12]
-    for i in range(2):
-        pos = [startpos[0] - i, startpos[1]]
-        if err_data[i] == '1':
-            qr_code.putpixel(convert_to_PIL(pos), 0)
-        elif err_data[i] == '0':
-            qr_code.putpixel(convert_to_PIL(pos), 1)
+    ## PREPARE THE MASKING INFO
+    if mask == 'none':
+        mask_data = '000'
+    else:
+        mask_data = bin(mask)[2:].zfill(3)
 
 
     ##ERROR CORRECTION BITS FOR THE FORMATTING DATA
@@ -227,10 +176,11 @@ def main():
 
 
     ## INSERT THE SQUARE LOCATORS
-    draw_locator((13, 13))
-    draw_locator((-1, 13))
-    draw_locator((13, -1))
+    draw_locator((7, 7))
+    draw_locator((21, 7))
+    draw_locator((7, 21))
 
+    fill_byte('00110110', 'down', (20, 15))
 
     ## DISPLAY THE RESULT
     factor = 52
