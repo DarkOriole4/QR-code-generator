@@ -3,6 +3,36 @@ from PIL import Image
 
 
 
+#converts the full message into the raw alphanumerical bits
+def convert_to_anum(message):
+    # convert the message into alphanumeric data
+    global alphanumeric
+    alphanumeric = '0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ $%*+-./:'
+
+    message_data = ''
+    message = message.upper()
+    for i in range(len(message)):
+        char = message[i]
+        if len(message) % 2 != 0 and i == len(message) - 1:  # if the final char is odd
+            num1 = anum_ord(message[i])
+            block = bin(num1)[2:].zfill(6)
+            message_data += block
+        elif i % 2 == 0:
+            num1 = anum_ord(message[i])
+            num2 = anum_ord(message[i + 1])
+            block = bin(num1 * 45 + 14)[2:].zfill(11)
+            message_data += block
+    return message_data
+
+
+# works like ord() but for alphanumeric encoding
+def anum_ord(letter):
+    for i in range(len(alphanumeric)):
+        if alphanumeric[i] == letter:
+            return i
+    raise Exception('The character "%s" cannot be encoded' % (letter))
+
+
 # bitwise xor two binary strings. The result is another string
 def bitwise_xor(arg1, arg2):
     if len(arg1) != len(arg2):
@@ -109,21 +139,25 @@ def get_format_parity(message):
 
 def main():
     ## PARAMETERS
-    message = 'Hello World!'
-    mode = 'byte'     # select mode from: numeric, alphanumeric, byte, kanji
-    mask = 4          # select masking pattern from 0-7 or 'none'
-    err_format = 'L'  # 'L': ~7% restoration, 'M': ~15% restoration, 'Q': ~25% restoration, 'H': ~30% restoration
+    message = 'Hello World'
+    mode = 'alphanumeric' # select mode from: numeric, alphanumeric, byte, kanji
+    mask = 4              # select masking pattern from 0-7 or 'none'
+    err_format = 'Q'      # 'L': ~7% restoration, 'M': ~15% restoration, 'Q': ~25% restoration, 'H': ~30% restoration
 
 
     ## PREPARE THE PARITY BITS TO PUT INTO THE QR
     if err_format == 'L':
         main_parity = get_parity(message, 7)
+        capacity = 19 * 8 #bits
     elif err_format == 'M':
         main_parity = get_parity(message, 10)
+        capacity = 16 * 8 #bits
     elif err_format == 'Q':
         main_parity = get_parity(message, 13)
+        capacity = 13 * 8 #bits
     elif err_format == 'H':
         main_parity = get_parity(message, 17)
+        capacity = 9 * 8 #bits
     else:
         raise Exception('Wrong error formatting mode')
 
@@ -135,25 +169,54 @@ def main():
     qr_code = Image.new(mode="1", size=(SIZE, SIZE), color=1)  # create QR code template (V.1 - 21x21p)
 
 
-    ## ENCODE THE MODE DECLARATION
+    ### ENCODE THE MESSAGE INTO THE QR CODE
+
+    ## GENERATE THE CHARACTER COUNT INDICATOR AND THE MODE DECLARATION
     if mode == 'numeric':
         mode_data = '0001'
+        cci = bin(len(message))[2:].zfill(10)
     elif mode == 'alphanumeric':
         mode_data = '0010'
+        cci = bin(len(message))[2:].zfill(9)
+
+        #convert the data
+        message_data = mode_data + cci + convert_to_anum(message)
+        if len(message_data) > capacity:
+            raise Exception('This message is to big (%d bits). Max capacity: %d bits' % (len(message_data), capacity))
+
     elif mode == 'byte':
         mode_data = '0100'
+        cci = bin(len(message))[2:].zfill(8)
     elif mode == 'kanji':
         mode_data == '1000'
+        cci = bin(len(message))[2:].zfill(8)
     else:
         raise Exception('No mode named %s' % (mode))
 
-    for i in range(4):
-        x = 20 - i % 2
-        y = 20 - i // 2
-        if mode_data[i] == '1':
-            qr_code.putpixel((x, y), 0)
-        else:
-            qr_code.putpixel((x, y), 1)
+
+    ## ADD A FEW TERMINATOR BITS TO THE MESSAGE
+    if len(message_data) < capacity:
+        isFull = False
+        for i in range(4):
+            if len(message_data) < capacity:
+                message_data += '0'
+            else:
+                isFull = True
+
+        ##  ADD MORE 0S TO MAKE THE LENGTH A MULTIPLE OF 8
+        while len(message_data) % 8 != 0 and isFull == False:
+            message_data += '0'
+            if len(message_data) == capacity:
+                isFull = True
+
+        ## ADD PAD BYTES IF THE STRING IS STILL TOO SHORT
+        pad_bytes = ['11101100', '00010001']
+        count = 0
+        while len(message_data) < capacity:
+            message_data += pad_bytes[count % 2]
+            count += 1
+        isFull = True
+        print(message_data)
 
 
     ## PERFORM THE MASKING
@@ -221,7 +284,6 @@ def main():
 
     #xor with a mask taken from the QR code specification
     format_string = bitwise_xor(format_string, '101010000010010')
-    print(format_string)
 
 
     ## DRAW THE FORMATTING DATA
