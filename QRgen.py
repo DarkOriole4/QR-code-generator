@@ -5,6 +5,9 @@ from PIL import Image
 
 # bitwise xor two binary strings. The result is another string
 def bitwise_xor(arg1, arg2):
+    if len(arg1) != len(arg2):
+        raise Exception('Both arguments need to have the same length')
+
     result = ''
     for i in range(len(arg1)):
         result += str(int(arg1[i]) ^ int(arg2[i]))
@@ -72,8 +75,11 @@ def get_parity(msg, ecc):
 
 
 def get_format_parity(message):
+    if message == '00000': # edgecase
+        return '0000000000' # predefined value
+
     # generator polynomial taken from the QR code specification
-    generator = '10100110111'
+    base_poly = '10100110111'
 
     # prepare the format string
     message += '0000000000'
@@ -84,8 +90,10 @@ def get_format_parity(message):
     # calculate the error correction bits
     while len(message) > 10:
         #pad the generator
+        generator = base_poly
         while len(generator) < len(message):
             generator += '0'
+
 
         #xor and remove zeros from the left side
         message = bitwise_xor(message, generator)
@@ -103,8 +111,8 @@ def main():
     ## PARAMETERS
     message = 'Hello World!'
     mode = 'byte'     # select mode from: numeric, alphanumeric, byte, kanji
-    mask = 6          # select masking pattern from 0-7 or 'none'
-    err_format = 'M'  # 'L': ~7% restoration, 'M': ~15% restoration, 'Q': ~25% restoration, 'H': ~30% restoration
+    mask = 4          # select masking pattern from 0-7 or 'none'
+    err_format = 'L'  # 'L': ~7% restoration, 'M': ~15% restoration, 'Q': ~25% restoration, 'H': ~30% restoration
 
 
     ## PREPARE THE PARITY BITS TO PUT INTO THE QR
@@ -171,19 +179,19 @@ def main():
                 else:
                     raise Exception('No mask named %s' % (mask))
 
-                if state == True:
-                    qr_code.putpixel((x, y), 0)
+                # if state == True:
+                #     qr_code.putpixel((x, y), 0)
 
 
     ## ADD THE STATIC TIMING LINES
     # vertical one
-    startpos = [8, 5]
+    startpos = [8, 6]
     for i in range(5):
         pos = [startpos[0] + i, startpos[1]]
         qr_code.putpixel(pos, i % 2)
 
     # horizontal one
-    startpos = [5, 8]
+    startpos = [6, 8]
     for i in range(5):
         pos = [startpos[0], startpos[1] + i]
         qr_code.putpixel(pos, i % 2)
@@ -214,6 +222,36 @@ def main():
     #xor with a mask taken from the QR code specification
     format_string = bitwise_xor(format_string, '101010000010010')
     print(format_string)
+
+
+    ## DRAW THE FORMATTING DATA
+    #horizontal line
+    startpos = [0, 8]
+    count = 0
+    for i in range(21):
+        #condition required to skip all of the important bits
+        if i <= 5 or i == 7 or (i >= 13 and i <= 20):
+            if format_string[count] == '1':
+                qr_code.putpixel((startpos[0] + i, startpos[1]), 0)
+            else:
+                qr_code.putpixel((startpos[0] + i, startpos[1]), 1)
+            count += 1
+
+    # vertical line
+    startpos = [8, 20]
+    count = 0
+    for i in range(21):
+        # condition required to skip all of the important bits
+        if i <= 6 or i == 12 or i == 13 or (i >= 15 and i <= 20):
+            if format_string[count] == '1':
+                qr_code.putpixel((startpos[0], startpos[1] - i), 0)
+            else:
+                qr_code.putpixel((startpos[0], startpos[1] - i), 1)
+            count += 1
+
+
+    # add the dark module
+    qr_code.putpixel((8, 13), 0)
 
 
     ## INSERT THE SQUARE LOCATORS
