@@ -67,22 +67,22 @@ def get_parity(msg, ecc):
 
 def main():
     ## PARAMETERS
-    message = 'Hello!'
+    message = 'Hello World!'
 
     mode = 'byte'     # numeric, alphanumeric, byte, kanji
-    mask = 'none'          # masking patterns from 0-7 or 'none' (4 might be a bit buggy)
-    err_format = 'G'  # 'L': ~7% restoration, 'M': ~15% restoration, 'Q': ~25% restoration, 'H': ~30% restoration
+    mask = 4          # masking patterns from 0-7 or 'none' (4 might be a bit buggy)
+    err_format = 'L'  # 'L': ~7% restoration, 'M': ~15% restoration, 'Q': ~25% restoration, 'H': ~30% restoration
 
 
     ## PREPARE THE PARITY BITS TO PUT INTO THE QR
     if err_format == 'L':
-        parity = get_parity(message, 7)
+        main_parity = get_parity(message, 7)
     elif err_format == 'M':
-        parity = get_parity(message, 10)
+        main_parity = get_parity(message, 10)
     elif err_format == 'Q':
-        parity = get_parity(message, 13)
+        main_parity = get_parity(message, 13)
     elif err_format == 'H':
-        parity = get_parity(message, 17)
+        main_parity = get_parity(message, 17)
     else:
         raise Exception('Wrong error formatting mode')
 
@@ -130,9 +130,9 @@ def main():
                 elif mask == 5:
                     state = (x * y) % 2 + (x * y) % 3 == 0
                 elif mask == 6:
-                    state = ((x * y) % 3 + x * y) % 2 == 0
+                    state = (((x * y) % 2) + (x * y) % 3) % 2 == 0
                 elif mask == 7:
-                    state = ((x * y) % 3 + x + y) % 2 == 0
+                    state = (((x + y) % 2) + ((x * y) % 3)) % 2 == 0
                 else:
                     raise Exception('No mask named %s' % (mask))
 
@@ -218,6 +218,13 @@ def main():
             qr_code.putpixel(convert_to_PIL(pos), 0)
         elif err_data[i] == '0':
             qr_code.putpixel(convert_to_PIL(pos), 1)
+
+
+    ##ERROR CORRECTION BITS FOR THE FORMATTING DATA
+    format_data = err_data + mask_data
+    format_parity = get_parity(format_data, 1)
+    print(format_parity)
+
 
     ## INSERT THE SQUARE LOCATORS
     draw_locator((13, 13))
