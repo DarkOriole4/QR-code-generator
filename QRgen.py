@@ -1,6 +1,12 @@
 from reedsolo import RSCodec
 from PIL import Image
 
+## PARAMETERS
+message = 'Hello World'
+mode = 'alphanumeric' # select mode from: numeric, alphanumeric, byte, kanji
+mask = 4              # select masking pattern from 0-7 or 'none'
+err_format = 'Q'      # 'L': ~7% restoration, 'M': ~15% restoration, 'Q': ~25% restoration, 'H': ~30% restoration
+
 
 
 #converts the full message into the raw alphanumerical bits
@@ -136,14 +142,7 @@ def get_format_parity(message):
 
 
 
-def main():
-    ## PARAMETERS
-    message = 'Hello World'
-    mode = 'alphanumeric' # select mode from: numeric, alphanumeric, byte, kanji
-    mask = 4              # select masking pattern from 0-7 or 'none'
-    err_format = 'Q'      # 'L': ~7% restoration, 'M': ~15% restoration, 'Q': ~25% restoration, 'H': ~30% restoration
-
-
+def generate_QR(message, mode, mask, err_format):
     ## PREPARE THE PARITY BITS TO PUT INTO THE QR
     if err_format == 'L':
         main_parity = get_parity(message, 7)
@@ -203,7 +202,7 @@ def main():
             else:
                 isFull = True
 
-        ##  ADD MORE 0S TO MAKE THE LENGTH A MULTIPLE OF 8
+        ##  ADD MORE 0'S TO MAKE THE LENGTH A MULTIPLE OF 8
         while len(message_data) % 8 != 0 and isFull == False:
             message_data += '0'
             if len(message_data) == capacity:
@@ -216,6 +215,9 @@ def main():
             message_data += pad_bytes[count % 2]
             count += 1
         isFull = True
+
+        ## COMPLETE THE MESSAGE BY ADDING THE ERROR CORRECTION BYTES AT THE END
+        message_data += main_parity
         print(message_data)
 
 
@@ -228,15 +230,89 @@ def main():
         # draw a column of bytes
         startpos = [20 - (k * 2), edges[k % 2]]
         for j in range(3):
+            if k % 2 == 0:
+                pos = [startpos[0], startpos[1] - (j * 4)]
+            else:
+                pos = [startpos[0], startpos[1] + (j * 4)]
+
             # draw a byte
-            for i in range(8):
-                if k % 2 == 0:
-                    pos = [startpos[0], startpos[1] - (j * 4)]
-                else:
-                    pos = [startpos[0], startpos[1] + (j * 4)]
-                fill_byte(message_data[:8], directions[k % 2], pos)
-            #remove the byte that was just written
-            message_data = message_data[8:]
+            fill_byte(message_data[:8], directions[k % 2], pos)
+            message_data = message_data[8:]  # remove the byte that was just written
+
+    #draw the middle section
+    startpos = [12, 20]
+    for j in range(3):
+        pos = [startpos[0], startpos[1] - (j * 4)]
+        fill_byte(message_data[:8], 'up', pos)
+        message_data = message_data[8:]  # remove the byte that was just written
+
+    #draw the top split section
+    startpos = [12, 8]
+    for i in range(4):
+        if message_data[i] == '1':
+            x = i % 2
+            y = i // 2
+            pos = [startpos[0] - x, startpos[1] - y]
+            qr_code.putpixel(pos, 0)
+    message_data = message_data[4:]  # remove the 4 bits that were just written
+
+    startpos = [12, 5]
+    for i in range(4):
+        if message_data[i] == '1':
+            x = i % 2
+            y = i // 2
+            pos = [startpos[0] - x, startpos[1] - y]
+            qr_code.putpixel(pos, 0)
+    message_data = message_data[4:]  # remove the 4 bits that were just written
+
+    # draw the top section
+    pos = [12, 3]
+    fill_byte(message_data[:8], 'up', pos)
+    message_data = message_data[8:]  # remove the byte that was just written
+
+    pos = [10, 0]
+    fill_byte(message_data[:8], 'down', pos)
+    message_data = message_data[8:]  # remove the byte that was just written
+
+    #draw the bottom split section
+    startpos = [10, 4]
+    for i in range(4):
+        if message_data[i] == '1':
+            x = i % 2
+            y = i // 2
+            pos = [startpos[0] - x, startpos[1] + y]
+            qr_code.putpixel(pos, 0)
+    message_data = message_data[4:]  # remove the 4 bits that were just written
+
+    startpos = [10, 7]
+    for i in range(4):
+        if message_data[i] == '1':
+            x = i % 2
+            y = i // 2
+            pos = [startpos[0] - x, startpos[1] + y]
+            qr_code.putpixel(pos, 0)
+    message_data = message_data[4:]  # remove the 4 bits that were just written
+
+    # draw the middle section
+    startpos = [10, 9]
+    for j in range(3):
+        pos = [startpos[0], startpos[1] + (j * 4)]
+        fill_byte(message_data[:8], 'down', pos)
+        message_data = message_data[8:]  # remove the byte that was just written
+
+    # start filling in the left side
+    pos = [8, 12]
+    fill_byte(message_data[:8], 'up', pos)
+    message_data = message_data[8:]  # remove the byte that was just written
+
+    # finish up the left side with the 3 last bytes
+    edges = [9, 12]
+    directions = ['down', 'up']
+    startpos = [5, 9]
+    for j in range(3):
+        pos = [startpos[0] - (j * 2), edges[k % 2]]
+        fill_byte(message_data[:8], directions[k % 2], pos)
+        message_data = message_data[8:]  # remove the byte that was just written
 
 
     ## PERFORM THE MASKING
@@ -348,4 +424,5 @@ def main():
     qr_code.show()
 
 
-main()
+
+generate_QR(message, mode, mask, err_format)
