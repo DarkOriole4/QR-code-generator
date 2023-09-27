@@ -1,14 +1,15 @@
 from reedsolo import RSCodec
 from PIL import Image
-import math
 
 ## PARAMETERS
-message = 'Hello World'
-mode = 'alphanumeric' # select mode from: numeric, alphanumeric, byte, kanji
-err_format = 'Q'      # 'L': ~7% restoration, 'M': ~15% restoration, 'Q': ~25% restoration, 'H': ~30% restoration
+#message = 'Cyber Sneakers'
+#message = 'http://t.ly/d7CaK'
+message = 'http://t.ly/puND9'
+mode = 'byte' # select mode from: numeric, alphanumeric, byte, kanji
+err_format = 'L'      # 'L': ~7% restoration, 'M': ~15% restoration, 'Q': ~25% restoration, 'H': ~30% restoration
 SIZE = 21             # determines the QR codes version (only V1: SIZExSIZE for now)
 
-show_info = False
+show_info = True
 mask_override = False
 mask = 2             # select masking pattern from 0-7 or 'none'
 
@@ -114,7 +115,7 @@ def evaluate_qr(qr_code):
         print("forbidden lines:", penalty3)
 
     ## RULE NO 4
-    percent = math.ceil((dark_count / SIZE ** 2) * 100)
+    percent = int((dark_count / SIZE ** 2) * 100)
     prev_percent = percent
     next_percent = percent
     if percent % 5 != 0:
@@ -154,6 +155,14 @@ def convert_to_anum(message):
             num2 = anum_ord(message[i + 1])
             block = bin(num1 * 45 + num2)[2:].zfill(11)
             mesg_data += block
+    return mesg_data
+
+
+def convert_to_byte(message):
+    mesg_data = ''
+    message = message.encode('iso-8859-1')
+    for letter in message:
+        mesg_data += bin(letter)[2:].zfill(8)
     return mesg_data
 
 
@@ -298,8 +307,6 @@ def generate_QR(message, mode, mask, err_format):
     elif mode == 'alphanumeric':
         mode_data = '0010'
         cci = bin(len(message))[2:].zfill(9)
-
-        #convert the data
         mesg_data = mode_data + cci + convert_to_anum(message)
         if len(mesg_data) > capacity:
             raise Exception('This message is to big (%d bits). Max capacity: %d bits' % (len(mesg_data), capacity))
@@ -307,6 +314,9 @@ def generate_QR(message, mode, mask, err_format):
     elif mode == 'byte':
         mode_data = '0100'
         cci = bin(len(message))[2:].zfill(8)
+        mesg_data = mode_data + cci + convert_to_byte(message)
+        if len(mesg_data) > capacity:
+            raise Exception('This message is to big (%d bits). Max capacity: %d bits' % (len(mesg_data), capacity))
     elif mode == 'kanji':
         mode_data == '1000'
         cci = bin(len(message))[2:].zfill(8)
@@ -592,7 +602,7 @@ def generate_QR(message, mode, mask, err_format):
 
 if mask_override == False:
     ## EVALUATE ALL OF THE MASKS AND CHOOSE THE BEST ONE
-    best = [999, 999]  # mode, penalty
+    best = [0, 999]  # mask, penalty
     for mask in range(8):
         qr_code = generate_QR(message, mode, mask, err_format)
         penalty = evaluate_qr(qr_code)
