@@ -1,12 +1,139 @@
 from reedsolo import RSCodec
 from PIL import Image
+import math
 
 ## PARAMETERS
-message = 'Hello World.'
+message = 'Hello World'
 mode = 'alphanumeric' # select mode from: numeric, alphanumeric, byte, kanji
-mask = 0              # select masking pattern from 0-7 or 'none'
 err_format = 'Q'      # 'L': ~7% restoration, 'M': ~15% restoration, 'Q': ~25% restoration, 'H': ~30% restoration
+SIZE = 21             # determines the QR codes version (only V1: SIZExSIZE for now)
 
+show_info = False
+mask_override = False
+mask = 2             # select masking pattern from 0-7 or 'none'
+
+
+def evaluate_qr(qr_code):
+    penalty = 0
+    dark_count = 0
+
+    ## RULE NO 1
+    #horizontal
+    prev_val = 0
+    for y in range(SIZE):
+        line_len = 0  # reset line
+        for x in range(SIZE):
+            val = qr_code.getpixel((x,y))
+
+            if val == 0:         # count up the dark modules
+                dark_count += 1  # for rule no 4
+
+            #back to rule no 1
+            if prev_val != val:
+                line_len = 1 # reset line
+            else:
+                line_len += 1 # same line
+
+            if line_len == 5: # unwanted length
+                penalty += 3
+            elif line_len > 5: # further penalties
+                penalty += 1
+            prev_val = val
+
+    # vertical
+    prev_val = 0
+    for x in range(SIZE):
+        line_len = 0  # reset line
+        for y in range(SIZE):
+            val = qr_code.getpixel((x, y))
+
+            if prev_val != val:
+                line_len = 1  # reset line
+            else:
+                line_len += 1  # same line
+
+            if line_len == 5:  # unwanted length
+                penalty += 3
+            elif line_len > 5:  # further penalties
+                penalty += 1
+            prev_val = val
+    if show_info == True:
+        print("horizontal + vertical lines:", penalty)
+
+    ## RULE NO 2
+    penalty2 = 0
+    for y in range(SIZE - 1):
+        for x in range(SIZE - 1):
+            # iterate through a 2x2 square where the top left corner is at (x, y)
+            isIllegal = True
+            root_val = qr_code.getpixel((x, y))
+            for i in range(1, 4):
+                val = qr_code.getpixel((x + i % 2, y + i // 2))
+                if val != root_val:
+                    isIllegal = False
+
+            if isIllegal:
+                penalty2 += 3
+    if show_info == True:
+        print("2x2 squares:", penalty2)
+
+    ## RULE NO 3
+    penalty3 = 0
+    illegal_lines = ["01000101111", "11110100010"]
+
+    # horizontally
+    for y in range(SIZE):
+        for x in range(11):
+            for i in range(11): #for each bit in the forbidden line 1...
+                if qr_code.getpixel((x+i, y)) != int(illegal_lines[0][i]):
+                    break
+                elif i == 10 and qr_code.getpixel((x+i, y)) == int(illegal_lines[0][10]):
+                    penalty3 += 40
+
+            for i in range(11): #for each bit in the forbidden line 2...
+                if qr_code.getpixel((x+i, y)) != int(illegal_lines[1][i]):
+                    break
+                elif i == 10 and qr_code.getpixel((x+i, y)) == int(illegal_lines[1][10]):
+                    penalty3 += 40
+
+    # vertically
+    for x in range(SIZE):
+        for y in range(11):
+            for i in range(11):  # for each bit in the forbidden line 1...
+                if qr_code.getpixel((x, y + i)) != int(illegal_lines[0][i]):
+                    break
+                elif i == 10 and qr_code.getpixel((x, y + i)) == int(illegal_lines[0][10]):
+                    penalty3 += 40
+
+            for i in range(11):  # for each bit in the forbidden line 2...
+                if qr_code.getpixel((x, y + i)) != int(illegal_lines[1][i]):
+                    break
+                elif i == 10 and qr_code.getpixel((x, y + i)) == int(illegal_lines[1][10]):
+                    penalty3 += 40
+    if show_info == True:
+        print("forbidden lines:", penalty3)
+
+    ## RULE NO 4
+    percent = math.ceil((dark_count / SIZE ** 2) * 100)
+    prev_percent = percent
+    next_percent = percent
+    if percent % 5 != 0:
+        while next_percent % 5 != 0:
+            next_percent += 1
+        while prev_percent % 5 != 0:
+            prev_percent -= 1
+
+    prev_percent = abs(prev_percent - 50)
+    next_percent = abs(next_percent - 50)
+
+    if prev_percent < next_percent:
+        penalty4 = prev_percent * 2
+    else:
+        penalty4 = next_percent * 2
+    if show_info == True:
+        print("B/W ratio:", penalty4)
+
+    return penalty + penalty2 + penalty3 + penalty4
 
 
 #converts the full message into the raw alphanumerical bits
@@ -63,7 +190,7 @@ def draw_locator(startpos):
                 pattern = [0,1,0,1,1,1,0,1,0]
 
             pos = [startpos[0] - x, startpos[1] - y]
-            if pos[0] <= 20 and pos[0] >= 0 and pos[1] <= 20 and pos[1] >= 0:
+            if pos[0] <= SIZE - 1 and pos[0] >= 0 and pos[1] <= SIZE - 1 and pos[1] >= 0:
                 if pattern[x] == 1:
                     qr_code.putpixel(pos, 0)
                 elif pattern[x] == 0:
@@ -145,10 +272,8 @@ def get_format_parity(message):
 def generate_QR(message, mode, mask, err_format):
 
     ## INITIALISE THE QR CODE TEMPLATE
-    global SIZE
     global qr_code
-    SIZE = 21
-    qr_code = Image.new(mode="1", size=(SIZE, SIZE), color=1)  # create QR code template (V.1 - 21x21p)
+    qr_code = Image.new(mode="1", size=(SIZE, SIZE), color=1)  # create QR code template (V.1 - SIZExSIZEp)
 
 
     ### ENCODE THE MESSAGE INTO THE QR CODE
@@ -238,7 +363,6 @@ def generate_QR(message, mode, mask, err_format):
 
         ## COMPLETE THE MESSAGE BY ADDING THE ERROR CORRECTION BYTES AT THE END
         mesg_data += main_parity
-        print(mesg_data)
 
 
     ## PUT THE DATA INTO THE QR CODE
@@ -342,9 +466,9 @@ def generate_QR(message, mode, mask, err_format):
                 if mask == 0:
                     state = (x + y) % 2 == 0
                 elif mask == 1:
-                    state = x % 2 == 0
+                    state = y % 2 == 0
                 elif mask == 2:
-                    state = y % 3 == 0
+                    state = x % 3 == 0
                 elif mask == 3:
                     state = (x + y) % 3 == 0
                 elif mask == 4:
@@ -362,6 +486,7 @@ def generate_QR(message, mode, mask, err_format):
                     px_val = qr_code.getpixel((x,y))
                     qr_code.putpixel((x, y), px_val ^ 1)
 
+
     ## MANUAL AND DIRTY BUG FIX
     # fix area #1
     for i in range(10, 12):
@@ -372,6 +497,17 @@ def generate_QR(message, mode, mask, err_format):
     # fix area #2
     for i in range(9, 13):
         x, y = [5, i]
+        px_val = qr_code.getpixel((x, y))
+        qr_code.putpixel((x, y), px_val ^ 1)
+
+    # fix area 3 (bottom)
+    for i in range(18, 21, 2):
+        x, y = [11, i]
+        px_val = qr_code.getpixel((x, y))
+        qr_code.putpixel((x, y), px_val ^ 1)
+
+    for i in range(18, 21):
+        x, y = [12, i]
         px_val = qr_code.getpixel((x, y))
         qr_code.putpixel((x, y), px_val ^ 1)
 
@@ -414,14 +550,13 @@ def generate_QR(message, mode, mask, err_format):
 
     #xor with a mask taken from the QR code specification
     format_string = bitwise_xor(format_string, '101010000010010')
-    print(format_string)
 
 
     ## DRAW THE FORMATTING DATA
     #horizontal line
     startpos = [0, 8]
     count = 0
-    for i in range(21):
+    for i in range(SIZE):
         #condition required to skip all of the important bits
         if i <= 5 or i == 7 or (i >= 13 and i <= 20):
             if format_string[count] == '1':
@@ -433,7 +568,7 @@ def generate_QR(message, mode, mask, err_format):
     # vertical line
     startpos = [8, 20]
     count = 0
-    for i in range(21):
+    for i in range(SIZE):
         # condition required to skip all of the important bits
         if i <= 6 or i == 12 or i == 13 or (i >= 15 and i <= 20):
             if format_string[count] == '1':
@@ -449,20 +584,37 @@ def generate_QR(message, mode, mask, err_format):
 
     ## INSERT THE SQUARE LOCATORS
     draw_locator((7, 7))
-    draw_locator((21, 7))
-    draw_locator((7, 21))
+    draw_locator((SIZE, 7))
+    draw_locator((7, SIZE))
 
-    ## ADD THE QUIET ZONE
-    margin_size = 2
-    final_qr = Image.new(mode="1", size=(SIZE + margin_size*2, SIZE + margin_size*2), color=1)
-    final_qr.paste(qr_code, (margin_size, margin_size))
+    return qr_code
 
 
-    ## DISPLAY THE RESULT
-    factor = 1080 // 21
-    final_qr = final_qr.resize(size=(SIZE*factor, SIZE*factor), resample=0)
-    final_qr.show()
+if mask_override == False:
+    ## EVALUATE ALL OF THE MASKS AND CHOOSE THE BEST ONE
+    best = [999, 999]  # mode, penalty
+    for mask in range(8):
+        qr_code = generate_QR(message, mode, mask, err_format)
+        penalty = evaluate_qr(qr_code)
+        if show_info == True:
+            print("\nmask", mask)
+            print("total:", penalty)
+        if penalty < best[1]:
+            best = [mask, penalty, qr_code]
+
+    qr_code = best[2]
+    if show_info == True:
+        print("\nBEST MASK:", best[0])
+else:
+    qr_code = generate_QR(message, mode, mask, err_format)
+
+## ADD THE QUIET ZONE
+margin_size = 2
+final_qr = Image.new(mode="1", size=(SIZE + margin_size*2, SIZE + margin_size*2), color=1)
+final_qr.paste(qr_code, (margin_size, margin_size))
 
 
-
-generate_QR(message, mode, mask, err_format)
+## DISPLAY THE RESULT
+factor = 1080 // SIZE
+final_qr = final_qr.resize(size=(SIZE*factor, SIZE*factor), resample=0)
+final_qr.show()
